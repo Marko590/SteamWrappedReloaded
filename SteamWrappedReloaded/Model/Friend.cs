@@ -1,4 +1,6 @@
-﻿namespace SteamWrappedReloaded.Model
+﻿using Steam.Models.SteamCommunity;
+
+namespace SteamWrappedReloaded.Model
 {
     public class Friend
     {
@@ -11,5 +13,6 @@
         public string? currentGameName { get; set; }
 
         public string? currentGameId { get; set; }
+        public UserStatus? status { get; set; }
     }
 }

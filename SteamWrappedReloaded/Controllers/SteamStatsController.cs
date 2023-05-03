@@ -10,7 +10,7 @@ namespace SteamWrappedReloaded.Controllers
     {
 
         private SteamService steamService = new SteamService();
-
+        private GameService gameService = new GameService();
         private readonly ILogger<SteamStatsController> _logger;
 
         public SteamStatsController(ILogger<SteamStatsController> logger)
@@ -26,16 +26,23 @@ namespace SteamWrappedReloaded.Controllers
 
         [HttpGet]
         [Route("friends")]
-        public ActionResult<IEnumerable<Friend>> GetFriends(ulong steamId,int numberOfFriends)
+        public ActionResult<IEnumerable<Friend>> GetFriends(ulong steamId,int? numberOfFriends)
         {
             return steamService.GetFriends(steamId, numberOfFriends);
         }
 
         [HttpGet]
         [Route("games")]
-        public ActionResult<GameList> GetGames(ulong steamId, int numberOfGames)
+        public ActionResult<GameList> GetGames(ulong steamId, int? numberOfGames)
         {
             return steamService.GetGames(steamId, numberOfGames);
+        }
+
+        [HttpGet]
+        [Route("recent")]
+        public ActionResult<IEnumerable<RecentGameModel>> GetRecentGames(ulong steamId)
+        {
+            return steamService.GetRecentGames(steamId);
         }
     }
 }

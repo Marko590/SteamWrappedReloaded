@@ -12,5 +12,7 @@ namespace SteamWrappedReloaded.Model
 
         public string? avatarUrl { get; set; }
 
+        public UserStatus status { get; set; }
+
     }
 }

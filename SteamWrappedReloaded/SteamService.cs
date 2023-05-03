@@ -7,40 +7,61 @@ namespace SteamWrappedReloaded
 {
 
     public class SteamService : BaseService
-    { 
-        public UserModel GetUser(ulong steamId)
+    {
+        GameService gameService = new GameService();
+        public ActionResult<UserModel> GetUser(ulong steamId)
         {
             var playerSummaryResponse = steamInterface.GetPlayerSummaryAsync(steamId).Result.Data;
 
-            return new UserModel
+            var retVal= new UserModel
             {
+                status = playerSummaryResponse.UserStatus,
                 UserName = playerSummaryResponse.Nickname,
                 avatarUrl = playerSummaryResponse.AvatarFullUrl,
                 realName = playerSummaryResponse.RealName,
             };
+            return new OkObjectResult(retVal);
         }
 
         // Change to steamInteface.GetPlayerSummariesAsync()
 
-        public ActionResult<IEnumerable<Friend>> GetFriends(ulong steamId, int numberOfFriends)
+        public ActionResult<IEnumerable<Friend>> GetFriends(ulong steamId, int? numberOfFriends)
         {
-            var friendListResponse = steamInterface.GetFriendsListAsync(steamId).Result.Data;
-            
-            var friends = new List<Friend>();
-            var friendFetchLimit = numberOfFriends;
+            var friendListResponse = steamInterface.GetFriendsListAsync(steamId);
+            IReadOnlyCollection<FriendModel> friendListData;
+            try
+            {
+                friendListData = friendListResponse.Result.Data;
+            }
+            catch (Exception ex)
+            {
+                return new NotFoundObjectResult("");
+            }
+
+            int friendFetchLimit;
+            if (!numberOfFriends.HasValue)
+            {
+                friendFetchLimit = friendListData.Count;
+            }
+            else
+            {
+                friendFetchLimit = numberOfFriends.Value;
+            }
+
             int fetchCounter = 0;
 
-            foreach (FriendModel friend in friendListResponse)
+            var returnValue = new List<Friend>();
+            foreach (FriendModel friend in friendListData)
             {
                 if (fetchCounter == friendFetchLimit)
                     break;
 
                 fetchCounter++;
-                
-                var playerSummaryResponse = steamInterface.GetPlayerSummaryAsync(friend.SteamId).Result.Data;
 
-                friends.Add(new Friend
+                var playerSummaryResponse = steamInterface.GetPlayerSummaryAsync(friend.SteamId).Result.Data;
+                returnValue.Add(new Friend
                 {
+                    status = playerSummaryResponse.UserStatus,
                     currentGameId = playerSummaryResponse.PlayingGameId,
                     currentGameName = playerSummaryResponse.PlayingGameName,
                     userName = playerSummaryResponse.Nickname,
@@ -50,20 +71,38 @@ namespace SteamWrappedReloaded
                     relationship = friend.Relationship
                 });
             }
-            return new ActionResult<IEnumerable<Friend>>(friends);
+            return new OkObjectResult(returnValue);
         }
 
-        public GameList GetGames(ulong steamId, int numberOfGames) {
+        public ActionResult<GameList> GetGames(ulong steamId, int? numberOfGames)
+        {
             var steamPlayerInterface = webInterfaceFactory.CreateSteamWebInterface<PlayerService>(client);
-            
-            var ownedGames = steamPlayerInterface.GetOwnedGamesAsync(steamId, includeAppInfo: true).Result.Data;
 
-            var gamesList = new List<GameModel>();
+            var ownedGamesResponse = steamPlayerInterface.GetOwnedGamesAsync(steamId, includeAppInfo: true, includeFreeGames: true);
+            OwnedGamesResultModel? ownedGames;
+
+            try
+            {
+                ownedGames = ownedGamesResponse.Result.Data;
+            }
+            catch (Exception ex)
+            {
+                return new NotFoundObjectResult("");
+            }
+
+            if (!numberOfGames.HasValue)
+            {
+                numberOfGames = (int)ownedGames.GameCount;
+            }
+            
+
             int fetchCounter = 0;
+            var gamesList = new List<GameModel>();
             foreach (OwnedGameModel game in ownedGames.OwnedGames)
             {
-                if (fetchCounter == numberOfGames)
+                if (fetchCounter == numberOfGames.Value)
                     break;
+                var appInfo = gameService.GetAppInfo(game.AppId);
 
                 fetchCounter++;
                 gamesList.Add(new GameModel
@@ -72,23 +111,54 @@ namespace SteamWrappedReloaded
                     imgLogoUrl = getImageForGame(game.AppId, game.ImgIconUrl),
                     Name = game.Name,
                     playTime = game.PlaytimeForever,
-                    playTimeTwoWeeks = game.PlaytimeLastTwoWeeks
-
+                    playTimeTwoWeeks = game.PlaytimeLastTwoWeeks,
+                    price = appInfo.price,
+                    coverUrl = appInfo.coverUrl
                 });
             }
 
-            return new GameList
+            var returnValue = new GameList
             {
-                games = gamesList,
+                games = gamesList.OrderByDescending(o => o.playTime),
                 percentOfUnplayed = GetPercentOfUnplayed(ownedGames)
             };
+            return new OkObjectResult(returnValue);
         }
 
 
-        private string getImageForGame(uint appId,string logoUrl)
+
+        public ActionResult<IEnumerable<RecentGameModel>> GetRecentGames(ulong steamId)
+        {
+            var steamPlayerInterface = webInterfaceFactory.CreateSteamWebInterface<PlayerService>(client);
+
+            var recentGamesResponse = steamPlayerInterface.GetRecentlyPlayedGamesAsync(steamId);
+
+            var recentGames = recentGamesResponse.Result.Data;
+
+            List<RecentGameModel> gamesList = new List<RecentGameModel>();
+            foreach (RecentlyPlayedGameModel recentGame in recentGames.RecentlyPlayedGames)
+            {
+
+                gamesList.Add(new RecentGameModel
+                {
+                    allTime = recentGame.PlaytimeForever,
+                    appId = recentGame.AppId,
+                    headerImage = gameService.getHeaderForGame(recentGame.AppId),
+                    twoWeeks = recentGame.Playtime2Weeks,
+                    Name = recentGame.Name
+                }
+                 );
+            }
+            return gamesList;
+
+        }
+
+        private string getImageForGame(uint appId, string logoUrl)
         {
             return String.Format("https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/{0}/{1}.jpg", appId.ToString(), logoUrl);
         }
+
+
 
         private double GetPercentOfUnplayed(OwnedGamesResultModel? ownedGames)
         {
@@ -100,8 +170,8 @@ namespace SteamWrappedReloaded
                     numberOfUnplayed++;
                 }
             }
-            return ((double)numberOfUnplayed/(double)ownedGames.GameCount)*100;
-            
+            return ((double)numberOfUnplayed / (double)ownedGames.GameCount) * 100;
+
         }
     }
 }

@@ -7,5 +7,7 @@
         public TimeSpan playTime { get; set; }
         public TimeSpan? playTimeTwoWeeks { get; set; }
         public string? imgLogoUrl { get; set; }
+        public float? price { get; set; }
+        public string? coverUrl { get; set; }
     }
 }
